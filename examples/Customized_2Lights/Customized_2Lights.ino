@@ -3,9 +3,13 @@
 #include <Arduino.h>
 #include <arduino_homekit_server.h>
 #include "wifi_info.h"
+#include "DHT.h"
 
 #define LOG_D(fmt, ...)   printf_P(PSTR(fmt "\n") , ##__VA_ARGS__);
-
+#define PIN_COOL 0
+#define PIN_WARM 4
+#define PIN_WARM 14
+#define DHTTYPE DHT11 
 
 // access your HomeKit characteristics defined in my_accessory.c
 extern "C" homekit_server_config_t config;
@@ -14,19 +18,19 @@ extern "C" homekit_characteristic_t cha_light_on_w;
 extern "C" homekit_characteristic_t cha_light_brightnes_w;
 extern "C" homekit_characteristic_t cha_light_on_c;
 extern "C" homekit_characteristic_t cha_light_brightnes_c;
+extern "C" homekit_characteristic_t cha_temperature;
+extern "C" homekit_characteristic_t cha_humidity;
 
 
 static uint32_t next_heap_millis = 0;
-
-
-#define PIN_COOL 0
-#define PIN_WARM 4
-
+static uint32_t next_report_millis = 0;
 bool is_on_w = false;
 bool is_on_c = false;
 float current_brightnes_w =  0.0;
 float current_brightnes_c =  0.0;
 
+
+DHT dht(DHTPin, DHTTYPE);
 
 void updateLight()
 {
@@ -102,18 +106,44 @@ void my_homekit_setup() {
 void my_homekit_loop() {
 	arduino_homekit_loop();
 	const uint32_t t = millis();
+    if (t > next_report_millis) {
+    // report sensor values every 30 seconds
+    next_report_millis = t + 30 * 1000;
+    read_sensors();
+  }
 	if (t > next_heap_millis) {
 		next_heap_millis = t + 5 * 1000;
 		LOG_D("Free heap: %d, HomeKit clients: %d",
 				ESP.getFreeHeap(), arduino_homekit_connected_clients_count());
 	}
 }
+void read_sensors() {
+  // FIXME, read your real sensors here.
+  float t = random_value(10, 30);
+  float h = random_value(30, 70);
+  //float h = dht.readHumidity();
+   //float t = dht.readTemperature();
+  
+  if (isnan(h) || isnan(t)) {
+      return;
+   }
+  cha_temperature.value.float_value = t;
+  homekit_characteristic_notify(&cha_temperature, cha_temperature.value);
 
+  cha_humidity.value.float_value = h;
+  homekit_characteristic_notify(&cha_humidity, cha_humidity.value);
+
+}
+
+int random_value(int min, int max) {
+  return min + random(max - min);
+}
 
 void setup() {
 	Serial.begin(115200);
+  dht.begin();
 	wifi_connect(); // in wifi_info.h
-	homekit_storage_reset(); // to remove the previous HomeKit pairing storage when you first run this new HomeKit example
+	//homekit_storage_reset(); // to remove the previous HomeKit pairing storage when you first run this new HomeKit example
 	my_homekit_setup();
 }
 
